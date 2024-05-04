@@ -1,7 +1,7 @@
 #include <errno.h>
 #include "unp.h"
 #include <stdarg.h>
-
+#include <iostream>
 
 static void err_doit(int errnoflag, int error, const char *fmt, va_list ap)
 {
@@ -11,8 +11,9 @@ static void err_doit(int errnoflag, int error, const char *fmt, va_list ap)
     if(errnoflag)
     {
         snprintf(buf + strlen(buf), MAXLINE - 1 - strlen(buf), ": %s", strerror(error));
+        strcat(buf, "\n");
+        
     }
-    strcat(buf, "\n");
     fflush(stdout);
     fputs(buf, stderr);
     fflush(NULL);

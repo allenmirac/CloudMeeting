@@ -30,7 +30,7 @@ void LogQueue::run()
         if(log==nullptr || log->data==nullptr){
             continue;
         }
-        errno_t error = fopen_s(&m_logFile, "./log.txt", "a");
+        error_t error = fopen_s(&m_logFile, "./log.txt", "a");
         if(error!=0){
             qDebug() << "打开文件错误！" << error;
             break;

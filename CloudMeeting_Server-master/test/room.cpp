@@ -2,6 +2,7 @@
 #include "msg.h"
 #include "unp.h"
 #include <map>
+#include "log.h"
 #define SENDTHREADSIZE 5
 SEND_QUEUE sendqueue; //save data
 
@@ -53,7 +54,7 @@ typedef struct pool
 
 Pool * user_pool = new Pool();
 
-// room process
+// room process 子进程消息的处理
 void process_main(int i, int fd) // room start
 {
     //create accpet fd thread
@@ -313,8 +314,9 @@ void* accept_fd(void *arg) //accept fd from father
                     }
                 }
                 sendqueue.push_msg(msg1);
-
-                printf("join meeting: %d\n", msg.ip);
+                char log[1024];
+                sprintf(log, "join meeting: %d\n", msg.ip);
+                LOG_INFO << log;
             }
         }
     }

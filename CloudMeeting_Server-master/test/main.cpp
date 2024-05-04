@@ -27,7 +27,7 @@ int main(int argc, char **argv)
     Signal(SIGCHLD, sig_chld);
     int i,maxfd;
     void thread_make(int);
-    void process_make(int, int);
+    int process_make(int, int);
 
     fd_set rset, masterset;
     FD_ZERO(&masterset);
@@ -126,7 +126,11 @@ void thread_make(int i)
     Pthread_create(&tptr[i].thread_tid, NULL, thread_main, arg);
 }
 
-
+/*
+ * 创建一套父子进程 
+ * 父进程利用了listenfd来监听read write
+ * 子进程关闭listenfd
+ */
 int process_make(int i, int listenfd)
 {
     int sockfd[2];
@@ -134,16 +138,16 @@ int process_make(int i, int listenfd)
     void process_main(int, int);
 
     Socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfd);
-    if((pid = fork()) > 0)
+    if((pid = fork()) > 0) // 父进程
     {
         Close(sockfd[1]);
         room->pptr[i].child_pid = pid;
         room->pptr[i].child_pipefd = sockfd[0];
-        room->pptr[i].child_status = 0;
+             0;
         room->pptr[i].total = 0;
         return pid; // father
     }
-
+    // 子进程
     Close(listenfd); // child not need this open
     Close(sockfd[0]);
     process_main(i, sockfd[1]); /* never returns */
