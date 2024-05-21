@@ -44,7 +44,7 @@ private:
     std::unordered_map<int, MsgHandler> msgHandlerMap_;
 
     // 存储连接信息 ip conn
-    std::multimap<uint32_t, TcpConnectionPtr> userConnMap_;
+    std::unordered_map<uint32_t, TcpConnectionPtr> userConnMap_;
 
     // 连接锁
     std::mutex mutex_;

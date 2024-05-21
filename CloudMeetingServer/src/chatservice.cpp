@@ -22,19 +22,19 @@ ChatService::~ChatService()
     userConnMap_.clear();
 }
 
-MsgHandler ChatService::getHandler(int msgid)
+MsgHandler ChatService::getHandler(int msgType)
 {
-    auto it = msgHandlerMap_.find(msgid);
+    auto it = msgHandlerMap_.find(msgType);
     if (it == msgHandlerMap_.end())
     {
         return [=](const TcpConnectionPtr &conn, json &js, Timestamp)
         {
-            LOG_ERROR << "Msgid is " << msgid << " can not find handler!";
+            LOG_ERROR << "Msgid is " << msgType << " can not find handler!";
         };
     }
     else
     {
-        return msgHandlerMap_[msgid];
+        return msgHandlerMap_[msgType];
     }
 }
 
@@ -45,41 +45,77 @@ void ChatService::setRoom(std::vector<Room> &vecRoom)
 
 void ChatService::broadMsg(const TcpConnectionPtr &conn, json &js, Timestamp time)
 {
-    int roomUserNo = js["roomUserNo"];
-    if (roomUserNo <= 1)
+    if (js.contains("roomUserNo"))
     {
-        return;
-    }
-    LOG_DEBUG << "需要广播消息";
-    std::vector<uint32_t> vecIp;
-    uint32_t ip = js["ip"];
-    uint roomId = js["roomId"];
-    Room room(0);
-    for (size_t i = 0; i < vecRoom_.size(); i++)
-    {
-        if (vecRoom_[i].getRoomId() == roomId)
+        int roomUserNo = js["roomUserNo"];
+        if (roomUserNo <= 1)
         {
-            room = vecRoom_[i];
-            break;
+            return;
         }
-    }
-    vecIp = room.getRoomUserIp();
-    js["roomUserIp"] = vecIp;
-    // for(size_t i=0; i<vecIp.size(); i++){
-    //     // if(ip!=vecIp[i]){
-    //         TcpConnectionPtr conn = userConnMap_.find(vecIp[i])->second;
-    //         conn->send(js.dump());
-    //     // }
-    // }
+        LOG_DEBUG << "需要广播加入房间消息";
+        std::vector<uint32_t> vecIp;
+        // uint32_t ip = js["ip"];
+        uint roomId = js["roomId"];
+        Room room(0);
+        for (size_t i = 0; i < vecRoom_.size(); i++)
+        {
+            if (vecRoom_[i].getRoomId() == roomId)
+            {
+                room = vecRoom_[i];
+                break;
+            }
+        }
+        vecIp = room.getRoomUserIp();
+        int size = vecIp.size();
+        js["roomUserIp"] = vecIp;
+        for (size_t i = 0; i < vecIp.size(); i++)
+        {
+            TcpConnectionPtr conn = userConnMap_.find(vecIp[i])->second;
+            conn->send(js.dump());
+        }
 
-    // multimap test
-    auto nums = userConnMap_.count(ip);
-    auto it = userConnMap_.find(ip);
-    while (nums--)
+        // multimap test
+        // auto nums = userConnMap_.count(ip);
+        // auto it = userConnMap_.find(ip);
+        // while (nums--)
+        // {
+        //     TcpConnectionPtr conn = it->second;
+        //     it++;
+        //     conn->send(js.dump());
+        // }
+    }
+    else
     {
-        TcpConnectionPtr conn = it->second;
-        it++;
-        conn->send(js.dump());
+        LOG_DEBUG << "房间消息广播";
+        uint32_t ip = js.at("ip").get<uint32_t>();
+        Room room(0);
+        std::vector<uint32_t> vecIp;
+        for (size_t i = 0; i < vecRoom_.size(); i++)
+        {
+            User *user = vecRoom_[i].getUser(ip);
+            if (user != nullptr)
+            {
+                room = vecRoom_[i];
+                break;
+            }
+        }
+        vecIp = room.getRoomUserIp();
+        for (size_t i = 0; i < vecIp.size(); i++)
+        {
+            if (ip != vecIp[i])
+            {
+                TcpConnectionPtr conn = userConnMap_.find(vecIp[i])->second;
+                conn->send(js.dump());
+            }
+        }
+        // auto nums = userConnMap_.count(ip);
+        // auto it = userConnMap_.find(ip);
+        // while (nums--)
+        // {
+        //     TcpConnectionPtr conn = it->second;
+        //     it++;
+        //     conn->send(js.dump());
+        // }
     }
 }
 
@@ -260,31 +296,34 @@ void ChatService::audioSend(const TcpConnectionPtr &conn, json &js, Timestamp ti
         response["data"] = data;
         response["ip"] = ip;
         // // real
-        // for(size_t i=0; i<vecIp.size(); i++)
-        // {
-        //     if(ip!=vecIp[i]){
-        //         TcpConnectionPtr conn = userConnMap_[vecIp[i]];
-        //         conn->send(response.dump());
-        //     }
-        // }
+        for (size_t i = 0; i < vecIp.size(); i++)
+        {
+            if (ip != vecIp[i])
+            {
+                TcpConnectionPtr conn = userConnMap_[vecIp[i]];
+                conn->send(response.dump());
+            }
+        }
 
         // multimap test
-        auto nums = userConnMap_.count(ip);
-        auto it = userConnMap_.find(ip);
-        while (nums--)
-        {
-            TcpConnectionPtr sendConn = it->second;
-            if(conn != sendConn){
-                conn->send(js.dump());
-            }
-            it++;
-        }
+        // auto nums = userConnMap_.count(ip);
+        // auto it = userConnMap_.find(ip);
+        // while (nums--)
+        // {
+        //     TcpConnectionPtr sendConn = it->second;
+        //     if (conn != sendConn)
+        //     {
+        //         conn->send(js.dump());
+        //     }
+        //     it++;
+        // }
     }
 }
 
 void ChatService::textSend(const TcpConnectionPtr &conn, json &js, Timestamp time)
 {
-    js.at("msgType") = TEXT_RECV;
+    if (js.contains("msgType"))
+        js["msgType"] = TEXT_RECV;
     broadMsg(conn, js, time);
 }
 
