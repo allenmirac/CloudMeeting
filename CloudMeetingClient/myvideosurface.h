@@ -15,6 +15,7 @@ public:
     //检测视频流的格式是否合法，返回bool
     bool isFormatSupported(const QVideoSurfaceFormat &format) const override;
     bool start(const QVideoSurfaceFormat &format) override;
+    // 显示视频的每一帧
     bool present(const QVideoFrame &frame) override;
     QRect videoRect() const;
     void updateVideoRect();

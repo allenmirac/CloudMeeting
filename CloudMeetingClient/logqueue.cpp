@@ -30,19 +30,19 @@ void LogQueue::run()
         if(log==nullptr || log->data==nullptr){
             continue;
         }
-        error_t error = fopen_s(&m_logFile, "./log.txt", "a");
+        errno_t error = fopen_s(&m_logFile, "./log.txt", "a");
         if(error!=0){
-            qDebug() << "打开文件错误！" << error;
+            LOG_WARN << "打开文件错误！" << error;
             break;
         }
 
         int hasToWrite = log->len;
         int hasWrite = 0, ret=0;
         while((ret=fwrite(log->data+hasWrite, 1, hasToWrite-hasWrite, m_logFile))<hasToWrite){
-            if(ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){
+            if(ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)){ // non-blocking I/O operations
                 ret=0;
             }else{
-                qDebug() << "Write logFile error!!";
+                LOG_WARN << "Write logFile error!!";
                 break;
             }
             hasWrite += ret;

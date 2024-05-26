@@ -38,6 +38,7 @@ HEADERS += \
     audioinput.h \
     audiooutput.h \
     chatmessage.h \
+    json.h \
     logger.h \
     logqueue.h \
     mytcpsocket.h \
@@ -60,4 +61,5 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
 RESOURCES += \
-    Resource.qrc
+    Resource.qrc \
+    qss.qrc

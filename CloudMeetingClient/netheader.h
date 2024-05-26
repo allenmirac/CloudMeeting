@@ -5,6 +5,8 @@
 #include <QQueue>
 #include <QImage>
 #include <QWaitCondition>
+#include "json.h"
+using json = nlohmann::json;
 #define QUEUE_MAXSIZE 1500
 #ifndef MB
 #define MB 1024*1024
@@ -56,6 +58,8 @@ enum MSG_TYPE
     PARTNER_JOIN = 22,
     JOIN_MEETING_RESPONSE = 23,
     PARTNER_JOIN2 = 24,
+    BROAD_MESSAGE = 25,
+    BROAD_ADDUSER_MESSAGE = 26,
     RemoteHostClosedError = 40,
     OtherNetError = 41
 };
@@ -64,11 +68,11 @@ struct MESSAGE
 {
     MSG_TYPE msg_type;
     uchar* msg_data;
-    ulong msg_len;
+    ulong msg_len; // 不包括头部
     quint32 ip;
 };
 
-Q_DECLARE_METATYPE(MESSAGE*)
+Q_DECLARE_METATYPE(json*)
 Q_DECLARE_METATYPE(MSG_TYPE)
 
 template<class T>

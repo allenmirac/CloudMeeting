@@ -10,6 +10,7 @@
 #include <QMovie>
 #include <QLabel>
 #include <QDebug>
+#include "logger.h"
 
 class ChatMessage:public QWidget
 {

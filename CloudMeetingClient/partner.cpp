@@ -8,7 +8,7 @@ Partner::Partner(QWidget *parent, quint32 ip) : QLabel(parent)
 
     //将图片按指定大小显示在矩形边框中
     m_width = ((QWidget*)this->parent())->size().width();
-    this->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(m_width-10, m_width-10)));
+    this->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(m_width-10, m_width-10)));
     this->setFrameShape(QFrame::Box);
 
     //为当前部件显示一个矩形边框，

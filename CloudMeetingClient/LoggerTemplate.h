@@ -10,7 +10,7 @@ const static QString logTemplate = u8R"logTemplate(
 <html>
 
 <head>
-    <title>TaoLogger</title>
+    <title>CloudMeetingLogger</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <style type="text/css" id="logCss">
         body {
@@ -87,7 +87,7 @@ const static QString logTemplate = u8R"logTemplate(
 </head>
 
 <body>
-    <h1><a href="https://jaredtao.github.io">TaoLogger</a> 日志文件</h1>
+    <h1>CloudMeetingLogger 日志文件</h1>
     <script type="text/JavaScript">
         function objHide(obj) {
             obj.style.display="none"

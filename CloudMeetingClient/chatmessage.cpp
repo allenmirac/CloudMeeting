@@ -7,8 +7,8 @@ ChatMessage::ChatMessage(QWidget *parent) : QWidget(parent)
     te_font.setFamily("MicrosoftYaHei");
     te_font.setPointSize(12);
     this->setFont(te_font);
-    m_leftPixmap = QPixmap(":/img/1.jpg");
-    m_rightPixmap = QPixmap(":/img/1.jpg");
+    m_leftPixmap = QPixmap(":/img/2.jpg");
+    m_rightPixmap = QPixmap(":/img/2.jpg");
 
     m_loadingMovie = new QMovie(this);
     m_loadingMovie->setFileName(":/img/3.gif");
@@ -37,7 +37,7 @@ void ChatMessage::setText(QString text, QString time, QSize allSize, QString ip,
     if(userType == User_Me) {
         if(!m_isSending) {
             m_loading->move(m_kuangRightRect.x() - m_loading->width() - 10, m_kuangRightRect.y()+m_kuangRightRect.height()/2- m_loading->height()/2);
-//            m_loading->move(0, 0);
+            //            m_loading->move(0, 0);
             m_loading->show();
             m_loadingMovie->start();
         }
@@ -68,7 +68,7 @@ QSize ChatMessage::fontRect(QString str)
 
     QSize size = getRealString(m_msg); // 整个的size
 
-    qDebug() << "fontRect Size:" << size;
+    LOG_INFO << "fontRect Size:" << size;
     int hei = size.height() < minHei ? minHei : size.height();
 
     m_sanjiaoLeftRect = QRect(iconWH+iconSpaceW+iconRectW, m_lineHeight/2 + 10, sanJiaoW, hei - m_lineHeight);
@@ -89,9 +89,9 @@ QSize ChatMessage::fontRect(QString str)
 
 
     m_ipLeftRect.setRect(m_kuangLeftRect.x(), m_kuangLeftRect.y()+iconTMPH - 20,
-                           m_kuangLeftRect.width()-2*textSpaceRect + iconWH*2, 20);
+                         m_kuangLeftRect.width()-2*textSpaceRect + iconWH*2, 20);
     m_ipRightRect.setRect(m_kuangRightRect.x(), m_kuangRightRect.y()+iconTMPH - 30,
-                            m_kuangRightRect.width()-2*textSpaceRect + iconWH*2 , 20);
+                          m_kuangRightRect.width()-2*textSpaceRect + iconWH*2 , 20);
     return QSize(size.width(), hei + 15);
 }
 
@@ -148,7 +148,7 @@ void ChatMessage::paintEvent(QPaintEvent *event)
 
     if(m_userType == User_Type::User_She) { // 用户
         //头像
-//        painter.drawRoundedRect(m_iconLeftRect,m_iconLeftRect.width(),m_iconLeftRect.height());
+        //        painter.drawRoundedRect(m_iconLeftRect,m_iconLeftRect.width(),m_iconLeftRect.height());
         painter.drawPixmap(m_iconLeftRect, m_leftPixmap);
 
         //框加边
@@ -200,7 +200,7 @@ void ChatMessage::paintEvent(QPaintEvent *event)
         painter.drawText(m_textLeftRect, m_msg,option);
     }  else if(m_userType == User_Type::User_Me) { // 自己
         //头像
-//        painter.drawRoundedRect(m_iconRightRect,m_iconRightRect.width(),m_iconRightRect.height());
+        //        painter.drawRoundedRect(m_iconRightRect,m_iconRightRect.width(),m_iconRightRect.height());
         painter.drawPixmap(m_iconRightRect, m_rightPixmap);
 
         //框

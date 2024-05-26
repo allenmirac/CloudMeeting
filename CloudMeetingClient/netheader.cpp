@@ -1,22 +1,22 @@
 #include "netheader.h"
 #include "logqueue.h"
 
-MSG_QUEUE<MESSAGE> send_queue;
-MSG_QUEUE<MESSAGE> recv_queue;
-MSG_QUEUE<MESSAGE> recv_audioQueue;
+MSG_QUEUE<json> send_queue;
+MSG_QUEUE<json> recv_queue;
+MSG_QUEUE<json> recv_audioQueue;
 
 LogQueue* logqueue = nullptr;
 
 void log_print(const char* filename, const char*funcname, int line, const char* fmt, ...){
     Log* log = (Log*)malloc(KB * 1);
     if(log==nullptr){
-        qDebug() << "malloc log failed!!";
+        LOG_WARN << "malloc log failed!!";
         return ;
     }else{
         memset(log, 0, sizeof(Log));
         log->data = (char*)malloc(KB * 1);
         if(log->data==nullptr){
-            qDebug() << "malloc log data failed!!";
+            LOG_WARN << "malloc log data failed!!";
             return;
         }
         memset(log->data, 0, 1*KB);

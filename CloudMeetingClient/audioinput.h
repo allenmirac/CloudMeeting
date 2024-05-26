@@ -6,6 +6,7 @@
 #include <QAudioInput>
 #include <QAudioFormat>
 #include <QDebug>
+#include <QByteArray>
 #include <QThread>
 #include "netheader.h"
 #include "logger.h"
@@ -23,14 +24,17 @@ private slots:
     void onreadyRead();
     void handleStateChange(QAudio::State);
     QString errorString();
-    void setVolum(int);
+
 public slots:
     void startCollect();
     void stopCollect();
+    void setVolume(int);
 private:
-    QAudioInput *audioInput;
-    QIODevice *inputDevice;
-    char *recvBuf;
+    QAudioInput *audioInput=nullptr;
+    QIODevice *inputDevice=nullptr;
+    QByteArray recvBuf;
+    int totalLength = 0;
+    int numReads = 0;
 };
 
 #endif // AUDIOINPUT_H

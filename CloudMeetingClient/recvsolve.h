@@ -6,6 +6,10 @@
 #include <QMutex>
 #include <QMetaType>
 #include "netheader.h"
+#include "logger.h"
+
+#include "json.h"
+using json = nlohmann::json;
 
 class RecvSolve : public QThread
 {
@@ -17,7 +21,7 @@ private:
     QMutex m_lock;
     bool m_isCanRun;
 signals:
-    void dataRecv(MESSAGE*);
+    void dataRecv(json*);
 public slots:
     void stopImmediately();
 };

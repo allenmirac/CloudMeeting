@@ -2,6 +2,7 @@
 #define WIDGET_H
 
 #include <QWidget>
+#include <QVBoxLayout>
 #include <QVideoFrame>
 #include <QTcpSocket>
 #include <QCamera>
@@ -56,6 +57,9 @@ private:
     bool  _createmeet; //是否创建会议
     bool _joinmeet; // 加入会议
     bool _openCamera; //是否开启摄像头
+    QWidget * m_pWgt;
+
+    QVBoxLayout *m_pLayout;//网格布局
 
     MyVideoSurface *_myvideosurface;
 
@@ -69,6 +73,7 @@ private:
     QThread *_textThread;
     //socket
     MyTcpSocket * _mytcpSocket;
+private:
     void paintEvent(QPaintEvent *event);
 
     QMap<quint32, Partner *> partner; //用于记录房间用户
@@ -101,7 +106,7 @@ private slots:
     void cameraError(QCamera::Error);
     void audioError(QString);
 //    void mytcperror(QAbstractSocket::SocketError);
-    void datasolve(MESSAGE *);
+    void datasolve(json*);
     void recvip(quint32);
     void cameraImageCapture(QVideoFrame frame);
     void on_joinmeetBtn_clicked();
@@ -115,7 +120,7 @@ private slots:
 
 signals:
     void pushImg(QImage);
-    void PushText(MSG_TYPE, QString = "");
+    void PushText(MSG_TYPE,  QString = "", quint32=0);
     void stopAudio();
     void startAudio();
     void volumnChange(int);

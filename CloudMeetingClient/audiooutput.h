@@ -25,7 +25,7 @@ signals:
     void speaker(QString);
 private slots:
     void handleStateChanged(QAudio::State);
-    void setVolumn(int);
+    void setVolume(int);
     void clearQueue();
 
 private:

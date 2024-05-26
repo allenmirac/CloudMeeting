@@ -62,7 +62,7 @@ void MyVideoSurface::updateVideoRect()
 
 }
 
-void MyVideoSurface::paint(QPainter *painter)
+void MyVideoSurface::paint(QPainter *)
 {
 
 }

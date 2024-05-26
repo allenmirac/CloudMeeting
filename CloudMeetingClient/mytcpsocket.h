@@ -8,8 +8,11 @@
 #include <QHostAddress>
 #include <QMutexLocker>
 #include <QtEndian>
+#include <QByteArray>
 #include "netheader.h"
 #include "logger.h"
+#include "json.h"
+using json = nlohmann::json;
 
 class MyTcpSocket : public QThread
 {
@@ -27,8 +30,8 @@ private:
     qint64 readn(char *, quint64, int);
     QTcpSocket *m_socktcp;
     QThread *m_sockThread;
-    uchar *m_sendbuf;
-    uchar* m_recvbuf;
+    QByteArray m_sendbuf;
+    QByteArray m_recvbuf;
     quint64 m_hasReceive;
 
     QMutex m_lock;
@@ -36,7 +39,7 @@ private:
 
 private slots:
     bool connectServer(QString, QString, QIODevice::OpenModeFlag);
-    void sendData(MESSAGE *);
+    void sendData(json*);
     void closeSocket();
 
 public slots:

@@ -3,6 +3,8 @@
         <file>1.jpg</file>
         <file>2.wav</file>
         <file>3.gif</file>
+        <file>video.png</file>
+        <file>2.jpg</file>
     </qresource>
     <qresource prefix="/effect"/>
 </RCC>

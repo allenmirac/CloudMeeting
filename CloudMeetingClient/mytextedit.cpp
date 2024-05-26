@@ -13,7 +13,7 @@ MyTextEdit::MyTextEdit(QWidget *parent) :QWidget(parent)
 
     m_edit = new QPlainTextEdit();
     m_edit->setPlaceholderText(QString::fromUtf8("&#x8F93;&#x5165;@&#x53EF;&#x4EE5;&#x5411;"
-                                               "&#x5BF9;&#x5E94;&#x7684;IP&#x53D1;&#x9001;&#x6570;&#x636E;"));
+                                                 "&#x5BF9;&#x5E94;&#x7684;IP&#x53D1;&#x9001;&#x6570;&#x636E;"));
     layout->addWidget(m_edit);
     m_completer = nullptr;
     connect(m_edit, SIGNAL(textChanged()), this, SLOT(complete()));
@@ -77,7 +77,7 @@ bool MyTextEdit::eventFilter(QObject *obj, QEvent *ev)
             int rangeEnd = it->second;
 
             if ((keyEvent->key() == Qt::Key_Backspace && cursorPosition > rangeStart && cursorPosition <= rangeEnd) ||
-                (keyEvent->key() == Qt::Key_Delete && cursorPosition >= rangeStart && cursorPosition < rangeEnd)) {
+                    (keyEvent->key() == Qt::Key_Delete && cursorPosition >= rangeStart && cursorPosition < rangeEnd)) {
                 cursor.setPosition(rangeStart);
                 cursor.setPosition(rangeEnd, QTextCursor::KeepAnchor);
                 cursor.removeSelectedText();
@@ -110,7 +110,7 @@ void MyTextEdit::changeCompletion(QString text)
     tc.clearSelection();
     tc.setPosition(pos, QTextCursor::MoveAnchor);
     tc.setPosition(str.size(), QTextCursor::KeepAnchor);
-      // tc.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor, str.size() - pos);
+    // tc.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor, str.size() - pos);
 
     QTextCharFormat fmt = tc.charFormat();
     QTextCharFormat fmt_back = fmt;

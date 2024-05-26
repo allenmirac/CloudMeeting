@@ -3,7 +3,7 @@
 #ifndef FRAME_LEN_125MS
 #define FRAME_LEN_125MS 1900
 #endif
-extern MSG_QUEUE<MESSAGE> recv_audioQueue;
+extern MSG_QUEUE<json> recv_audioQueue;
 
 AudioOutput::AudioOutput(QObject *parent) : QThread(parent)
 {
@@ -13,11 +13,11 @@ AudioOutput::AudioOutput(QObject *parent) : QThread(parent)
     format.setSampleSize(16);
     format.setCodec("audio/pcm");
     format.setByteOrder(QAudioFormat::LittleEndian);
-    format.setSampleType(QAudioFormat::UnSignedInt);
+    format.setSampleType(QAudioFormat::SignedInt);
 
     QAudioDeviceInfo info = QAudioDeviceInfo::defaultOutputDevice();
     if(!info.isFormatSupported(format)){
-        qWarning() << "Raw audio format not supported by backend, cannot play audio.";
+        LOG_WARN << "Raw audio format not supported by backend, cannot play audio.";
         return;
     }
     audioOutput = new QAudioOutput(format, this);
@@ -40,20 +40,21 @@ void AudioOutput::stopImmediately()
 
 void AudioOutput::startPlay()
 {
-    if(audioOutput->state() == QAudio::ActiveState) return;
-    LOG_INFO << "Start playing audio";
-    audioOutput->start();
+    QMutexLocker locker(&m_lock);
+    if (audioOutput && audioOutput->state() != QAudio::ActiveState) {
+        LOG_INFO << "Start playing audio";
+        outputDevice = audioOutput->start(); // Ensure outputDevice is initialized
+    }
 }
 
 void AudioOutput::stopPlay()
 {
-    if(audioOutput->state() == QAudio::StoppedState) return;
-    {
-        QMutexLocker lock(&deviceLock);
+    QMutexLocker locker(&m_lock);
+    if (audioOutput && audioOutput->state() != QAudio::StoppedState) {
+        audioOutput->stop();
         outputDevice = nullptr;
+        LOG_INFO << "Stop playing audio";
     }
-    audioOutput->stop();
-    LOG_INFO << "Stop playing audio";
 }
 
 void AudioOutput::handleStateChanged(QAudio::State newState)
@@ -79,7 +80,7 @@ void AudioOutput::handleStateChanged(QAudio::State newState)
     }
 }
 
-void AudioOutput::setVolumn(int v)
+void AudioOutput::setVolume(int v)
 {
     audioOutput->setVolume(v/100.0);
 }
@@ -96,52 +97,61 @@ void AudioOutput::run()
 
     WRITE_LOG("Start playing audio thread 0x%p", QThread::currentThread());
 
-    for(;;){
-        {
-            QMutexLocker lock(&m_lock);
-            if(m_isCanRun == false){
-                stopPlay();
-                WRITE_LOG("Stop playing audio thread 0x%p", QThread::currentThread());
-                return;
-            }
+    while(m_isCanRun){
+        //        {
+        //            QMutexLocker lock(&m_lock);
+        //            if(m_isCanRun == false){
+        //                stopPlay();
+        //                WRITE_LOG("Stop playing audio thread 0x%p", QThread::currentThread());
+        //                return;
+        //            }
+        //        }
+        json* msg = recv_audioQueue.pop_msg();
+        if(msg == nullptr) {
+            QThread::msleep(10);
+            continue ;
         }
-        MESSAGE* msg = recv_audioQueue.pop_msg();
-        if(msg == nullptr) continue ;
+
+        quint32 msgIp = (*msg).at("ip");
+        std::string msgData = (*msg).at("data").get<std::string>();
+        QByteArray byteArray = QByteArray::fromStdString(msgData);
 
         {
             QMutexLocker lock(&m_lock);
             if(outputDevice!=nullptr){
-                pcmDataBuffer.append((char*)msg->msg_data, msg->msg_len);
+                pcmDataBuffer.append(byteArray);
                 if(pcmDataBuffer.size() >= FRAME_LEN_125MS){
                     qint64 ret = outputDevice->write(pcmDataBuffer.data(), FRAME_LEN_125MS);
                     if(ret < 0){
                         LOG_DEBUG << outputDevice->errorString();
                         return ;
                     }else{
-                        emit speaker(QHostAddress(msg->ip).toString());
+                        emit speaker(QHostAddress(msgIp).toString());
+                        LOG_DEBUG << "写入音频数据";
                         pcmDataBuffer = pcmDataBuffer.right(pcmDataBuffer.size() - ret);
                     }
                 }
             }else{
+                LOG_DEBUG << "outputDevice == nullptr";
                 pcmDataBuffer.clear();
             }
         }
-        if(msg->msg_data) free(msg->msg_data);
-        if(msg) free(msg);
     }
+    // isCanRun=false;
+    WRITE_LOG("Stop playing audio thread 0x%p", QThread::currentThread());
 }
 
 QString AudioOutput::errorString()
 {
     if (audioOutput->error() == QAudio::OpenError){
-        return QString("AudioInput An error occurred opening the audio device").toUtf8();
+        return QString("AudioOutput An error occurred opening the audio device").toUtf8();
     }else if (audioOutput->error() == QAudio::IOError){
-        return QString("AudioInput An error occurred during read/write of audio device").toUtf8();
+        return QString("AudioOutput An error occurred during read/write of audio device").toUtf8();
     }else if (audioOutput->error() == QAudio::UnderrunError){
-        return QString("AudioInput Audio data is not being fed to the audio device at a fast enough rate").toUtf8();
+        return QString("AudioOutput Audio data is not being fed to the audio device at a fast enough rate").toUtf8();
     }else if (audioOutput->error() == QAudio::FatalError){
-        return QString("AudioInput A non-recoverable error has occurred, the audio device is not usable at this time.");
+        return QString("AudioOutput A non-recoverable error has occurred, the audio device is not usable at this time.");
     }else{
-        return QString("AudioInput No errors have occurred").toUtf8();
+        return QString("AudioOutput No errors have occurred").toUtf8();
     }
 }

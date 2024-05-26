@@ -1,6 +1,7 @@
+
 #include "sendtext.h"
 
-extern MSG_QUEUE<MESSAGE> send_queue;
+extern MSG_QUEUE<json> send_queue;
 
 SendText::SendText(QObject *parent) : QThread(parent)
 {
@@ -30,69 +31,56 @@ void SendText::run()
         TEXTMSG text = m_textQueue.front();
         m_textQueue.pop_front();
         m_textQueue_lock.unlock();
-        m_textQueue_cond.wakeOne();
+        m_textQueue_cond.wakeOne();//可以push_back了
 
-        MESSAGE *send = (MESSAGE*)malloc(sizeof(MESSAGE));
-        if (send == NULL){
-            WRITE_LOG("malloc error");
-            qDebug() << __FILE__  <<__LINE__ << "malloc fail";
-            continue;
-        }else{
-            memset(send, 0, sizeof(MESSAGE));
+        json* send=new json();
 
-            if(text.type == CREATE_MEETING || text.type == CLOSE_CAMERA){
-                send->msg_len = 0;
-                send->msg_data = NULL;
-                send->msg_type = text.type;
-                send_queue.push_msg(send);
-            }else if(text.type == JOIN_MEETING){
-                send->msg_type = JOIN_MEETING;
-                send->msg_len = 4; //房间号占4个字节
-                send->msg_data = (uchar*)malloc(send->msg_len + 10);
-                if (send->msg_data == NULL)
-                {
-                    WRITE_LOG("malloc error");
-                    qDebug() << __FILE__ << __LINE__ << "malloc failed";
-                    free(send);
-                    continue;
-                }else{
-                    memset(send->msg_data, 0, send->msg_len + 10);
-                    quint32 roomno = text.str.toUInt();
-                    memcpy(send->msg_data, &roomno, sizeof(roomno));
-                    //加入发送队列
-                    send_queue.push_msg(send);
-                }
-            }else if(text.type == TEXT_SEND){
-                send->msg_type = TEXT_SEND;
-                QByteArray data = qCompress(QByteArray::fromStdString(text.str.toStdString())); //压缩
-                send->msg_len = data.size();
-                send->msg_data = (uchar *) malloc(send->msg_len);
-                if(send->msg_data == NULL)
-                {
-                    WRITE_LOG("malloc error");
-                    qDebug() << __FILE__ << __LINE__ << "malloc error";
-                    free(send);
-                    continue;
-                }
-                else
-                {
-                    memset(send->msg_data, 0, send->msg_len);
-                    memcpy_s(send->msg_data, send->msg_len, data.data(), data.size());
-                    send_queue.push_msg(send);
-                }
-            }
+        if(text.type == CREATE_MEETING){
+            (*send)["msgType"] = CREATE_MEETING;
+            (*send)["roomId"] = text.str.toUInt();
+            (*send)["ip"] = text.ip;
+            LOG_DEBUG << "send_queue push CREATE_MEETING || CLOSE_CAMERA";
+            send_queue.push_msg(send);
+        } else if(text.type == CLOSE_CAMERA){
+            (*send)["msgType"] = CLOSE_CAMERA;
+        }else if(text.type == JOIN_MEETING){
+            (*send)["msgType"] = JOIN_MEETING;
+            (*send)["roomId"] = text.str.toUInt();
+            (*send)["ip"] = text.ip;
+            LOG_DEBUG << "send_queue push msg JOIN_MEETING, roomId="<<text.str.toUInt();
+            //加入发送队列
+            send_queue.push_msg(send);
+        } else if(text.type == TEXT_SEND){
+            (*send)["msgType"] = TEXT_SEND;
+            QByteArray data = qCompress(QByteArray::fromStdString(text.str.toStdString())); //压缩
+            QString base64CompressedData = QString(data.toBase64());
+            (*send)["text"] = base64CompressedData.toStdString();
+            (*send)["ip"] = text.ip;
+            LOG_DEBUG << "send_queue push msg TEXT_SEND";
+            send_queue.push_msg(send);
+        } else if( text.type == PARTNER_EXIT) {
+            (*send)["msgType"] = PARTNER_EXIT;
+            (*send)["roomUserNo"] = text.str.toUInt();
+            (*send)["ip"] = text.ip;
+            LOG_DEBUG << "send_queue push msg PARTNER_EXIT";
+            send_queue.push_msg(send);
+        } else if (text.type == AUDIO_SEND) {
+            (*send)["msgType"] = AUDIO_SEND;
+            LOG_DEBUG << "send_queue push msg AUDIO_SEND";
+            send_queue.push_msg(send);
         }
     }
 }
 
-void SendText::pushToTextQueue(MSG_TYPE msg_type, QString str)
+void SendText::pushToTextQueue(MSG_TYPE msg_type,  QString str, quint32 ip)
 {
     m_textQueue_lock.lock();
     while(m_textQueue.size() > QUEUE_MAXSIZE){
         m_textQueue_cond.wait(&m_textQueue_lock);
     }
-    m_textQueue.push_back(TEXTMSG(str, msg_type));
+    m_textQueue.push_back(TEXTMSG(str, msg_type, ip));
     m_textQueue_lock.unlock();
+    m_textQueue_cond.wakeOne();
 }
 
 void SendText::stopImmediately()

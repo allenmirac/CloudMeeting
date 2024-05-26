@@ -5,6 +5,8 @@
 #include <QMutex>
 #include <QDebug>
 #include "netheader.h"
+#include "logger.h"
+
 class LogQueue : public QThread
 {
     Q_OBJECT

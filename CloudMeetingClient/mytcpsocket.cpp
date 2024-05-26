@@ -1,8 +1,8 @@
 #include "mytcpsocket.h"
 
-extern MSG_QUEUE<MESSAGE> send_queue;
-extern MSG_QUEUE<MESSAGE> recv_queue;
-extern MSG_QUEUE<MESSAGE> recv_audioQueue;
+extern MSG_QUEUE<json> send_queue;
+extern MSG_QUEUE<json> recv_queue;
+extern MSG_QUEUE<json> recv_audioQueue;
 
 MyTcpSocket::MyTcpSocket(QObject* parent) : QThread(parent)
 {
@@ -13,19 +13,14 @@ MyTcpSocket::MyTcpSocket(QObject* parent) : QThread(parent)
     this->moveToThread(m_sockThread);
     connect(m_sockThread, SIGNAL(finished()), this, SLOT(closeSocket()));
 
-    m_sendbuf = (uchar*)malloc(4 * MB);
-    m_recvbuf = (uchar*)malloc(4*MB);
+
     m_hasReceive = 0;
 }
 
 MyTcpSocket::~MyTcpSocket()
 {
-    if(m_sendbuf == nullptr){
-        free(m_sendbuf);
-    }
-    if(m_recvbuf == nullptr){
-        free(m_recvbuf);
-    }
+    m_sendbuf.clear();
+    m_recvbuf.clear();
 }
 
 bool MyTcpSocket::connectToServer(QString ip, QString port, QIODevice::OpenModeFlag flag)
@@ -81,14 +76,22 @@ void MyTcpSocket::run()
      * 1 2 4 4 MSGSize 1
      *底层写数据线程
      */
-    for(;;){
+    for(;;) {
         {
             QMutexLocker lock(&m_lock);
-            if(m_isCanRun==false) return ;
+            if (!m_isCanRun) return;
         }
-        MESSAGE *send = send_queue.pop_msg();
-        if(send==nullptr) continue;
-        QMetaObject::invokeMethod(this, "sendData", Q_ARG(MESSAGE*, send));
+
+        json* send = nullptr;
+        {
+            QMutexLocker lock(&m_lock);
+            send = send_queue.pop_msg();
+        }
+
+        if (send != nullptr) {
+            LOG_DEBUG << "send queue pop msg";
+            QMetaObject::invokeMethod(this, "sendData", Q_ARG(json*, send));
+        }
     }
 }
 
@@ -97,7 +100,7 @@ qint64 MyTcpSocket::readn(char *buf, quint64 maxSize, int n)
     quint64 hasToRead = n;
     quint64 hasRead = 0;
     do{
-        quint64 ret = m_socktcp->read(buf+hasRead, hasToRead);
+        qint64 ret = m_socktcp->read(buf+hasRead, hasToRead);
         if(ret < 0){
             return -1;
         }
@@ -113,29 +116,27 @@ qint64 MyTcpSocket::readn(char *buf, quint64 maxSize, int n)
 bool MyTcpSocket::connectServer(QString ip, QString port, QIODevice::OpenModeFlag flag)
 {
     if(m_socktcp == nullptr) m_socktcp = new QTcpSocket();
+    LOG_DEBUG << ip << "," << port;
     m_socktcp->connectToHost(ip, port.toUShort(), flag);
     // 最后一个参数保证连接到槽不会重复连接
-    connect(m_socktcp, SIGNAL(readyRead()), this, SLOT(recvFromSocket()), Qt::UniqueConnection);\
-    if(m_socktcp->waitForConnected(5000)){
+    connect(m_socktcp, SIGNAL(readyRead()), this, SLOT(recvFromSocket()), Qt::UniqueConnection);
+    if(m_socktcp->waitForConnected(50000)){
         return true;
     }
     m_socktcp->close();
     return false;
 }
 
-void MyTcpSocket::sendData(MESSAGE *send)
+void MyTcpSocket::sendData(json* sendJson)
 {
     if(m_socktcp->state() == QAbstractSocket::UnconnectedState){
-        emit sendTextOver();
-        if (send->msg_data) free(send->msg_data);
-        if (send) free(send);
+        (*sendJson).clear();
         return;
     }
-    quint64 bytesToWrite = 0;
 
     // write to dets in big-endian byte order.
     //构造消息头
-    m_sendbuf[bytesToWrite++] = '$';
+    /*m_sendbuf[bytesToWrite++] = '$';
 
     //消息类型
     qToBigEndian<quint16>(send->msg_type, m_sendbuf + bytesToWrite);
@@ -164,28 +165,37 @@ void MyTcpSocket::sendData(MESSAGE *send)
     // 消息写入
     memcpy(m_sendbuf + bytesToWrite, send->msg_data, send->msg_len);
     bytesToWrite += send->msg_len;
+    // 消息头部信息的尾部
     m_sendbuf[bytesToWrite++] = '#'; //结尾字符
+    */
+    LOG_DEBUG << "send data";
+    if(sendJson==nullptr) {
+        LOG_DEBUG << "sendJson ==nullptr";
+    }
+    m_sendbuf = QByteArray::fromStdString((*sendJson).dump());
 
-    qint64 hastowrite = bytesToWrite;
-    qint64 ret = 0, haswrite = 0;
-    while ((ret = m_socktcp->write((char*)m_sendbuf + haswrite, hastowrite - haswrite)) < hastowrite)
-    {
-        if (ret == -1 && m_socktcp->error() == QAbstractSocket::TemporaryError) {
-            ret = 0;
-        } else if (ret == -1) {
-            qDebug() << "network error";
-            break;
+    qint64 bytesToWrite = m_sendbuf.size();
+    qint64 hasWritten = 0;
+    while (hasWritten < bytesToWrite) {
+        qint64 ret = m_socktcp->write(m_sendbuf.constData() + hasWritten, bytesToWrite - hasWritten);
+        if (ret == -1) {
+            if (m_socktcp->error() == QAbstractSocket::TemporaryError) {
+                ret = 0;
+            } else {
+                LOG_WARN << "network error";
+                break;
+            }
         }
-        haswrite += ret;
-        hastowrite -= ret;
+        hasWritten += ret;
     }
 
     m_socktcp->waitForBytesWritten();
-    if(send->msg_type == TEXT_SEND){
+    LOG_DEBUG << "sendData " << bytesToWrite << " bytes";
+    int msg_type = (*sendJson)["msgType"];
+    if(msg_type == TEXT_SEND){
         emit sendTextOver();
     }
-    if(send->msg_data) free(send->msg_data);
-    if(send) free(send);
+
 }
 
 void MyTcpSocket::closeSocket()
@@ -197,206 +207,103 @@ void MyTcpSocket::closeSocket()
 
 void MyTcpSocket::recvFromSocket()
 {
-    qint64 availbytes = m_socktcp->bytesAvailable();
-    if (availbytes <=0 ) {
-        return;
-    }
-    qint64 ret = m_socktcp->read((char *) m_recvbuf + m_hasReceive, availbytes);
-    if (ret <= 0) {
-        qDebug() << "error or no more data";
-        return;
-    }
-    m_hasReceive += ret;
-
-    //数据包不够
-    if (m_hasReceive < MSG_HEADER) {
+    m_recvbuf  = m_socktcp->readAll();
+    // 数据包不够
+    if (m_recvbuf.size() == 0) {
+        LOG_WARN << "error or no more data";
         return;
     }else{
-        quint32 data_size;
-        qFromBigEndian<quint32>(m_recvbuf+7, 4, &data_size);//将数据大小读入data_szie
-        if((quint64)data_size+1+MSG_HEADER <= m_hasReceive){
-            if (m_recvbuf[0] == '$' && m_recvbuf[MSG_HEADER + data_size] == '#'){
-                MSG_TYPE msgtype;
-                uint16_t type;
-                qFromBigEndian<uint16_t>(m_recvbuf + 1, 2, &type);
-                msgtype=(MSG_TYPE)type;
-                if (msgtype == CREATE_MEETING_RESPONSE || msgtype == JOIN_MEETING_RESPONSE
-                        || msgtype == PARTNER_JOIN2){
-                    if (msgtype == CREATE_MEETING_RESPONSE) {
-                        qint32 roomNo;
-                        qFromBigEndian<qint32>(m_recvbuf + MSG_HEADER, 4, &roomNo);
-                        MESSAGE *msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                        if(msg == nullptr){
-                            LOG_DEBUG << " CREATE_MEETING_RESPONSE malloc MESG failed";
-                        }else{
-                            memset(msg, 0, sizeof(MESSAGE));
+        json* recvJson = new json(json::parse(m_recvbuf.constData()));
+        int msgtype = (*recvJson)["msgType"];
+        if (msgtype == CREATE_MEETING_RESPONSE || msgtype == JOIN_MEETING_RESPONSE
+                || msgtype == PARTNER_JOIN2 || msgtype==BROAD_ADDUSER_MESSAGE){
+            if (msgtype == CREATE_MEETING_RESPONSE) {
+                recv_queue.push_msg(recvJson);
+            }else if(msgtype == JOIN_MEETING_RESPONSE) {
+                recv_queue.push_msg(recvJson);
+            }else if(msgtype == PARTNER_JOIN2){ // 加入多个人
+                recv_queue.push_msg(recvJson);
+            }
+            else if(msgtype == BROAD_ADDUSER_MESSAGE)
+            {
+                recv_queue.push_msg(recvJson);
+            }
+        }else if (msgtype == IMG_RECV || msgtype == PARTNER_JOIN
+                  || msgtype == PARTNER_EXIT || msgtype == AUDIO_RECV
+                  || msgtype == CLOSE_CAMERA || msgtype == TEXT_RECV) {
+            //            quint32 ip;
+            //            qFromBigEndian<quint32>(m_recvbuf + 3, 4, &ip);
+            if (msgtype == IMG_RECV) {
+                std::string data = (*recvJson).at("data").get<std::string>();
+                QByteArray byteArray(data.c_str(), data.length());
+                QByteArray rc = QByteArray::fromBase64(byteArray);
+                QByteArray rdc = qUncompress(rc);
+                (*recvJson).at("data") = rdc.toStdString();
+                recv_queue.push_msg(recvJson);
+                //                QByteArray cc((char *) m_recvbuf + MSG_HEADER, data_size);
+                //                QByteArray rc = QByteArray::fromBase64(cc);
+                //                QByteArray rdc = qUncompress(rc);//解压缩
+                //                //将消息加入到接收队列
+                //                if (rdc.size() > 0)
+                //                {
+                //                    MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
+                //                    if (msg == nullptr) {
+                //                        LOG_DEBUG << " malloc failed";
+                //                    } else {
+                //                        memset(msg, 0, sizeof(MESSAGE));
+                //                        msg->msg_type = msgtype;
+                //                        msg->msg_data = (uchar*)malloc(rdc.size()); // 10 = format + width + width
+                //                        if (msg->msg_data == NULL) {
+                //                            free(msg);
+                //                            LOG_DEBUG << " malloc failed";
+                //                        } else {
+                //                            memset(msg->msg_data, 0, rdc.size());
+                //                            memcpy_s(msg->msg_data, rdc.size(), rdc.data(), rdc.size());
+                //                            msg->msg_len = rdc.size();
+                //                            msg->ip = ip;
+                //                            recv_queue.push_msg(msg);
+                //                        }
+                //                    }
+                //                }
+            } else if (msgtype == PARTNER_JOIN || msgtype == PARTNER_EXIT || msgtype == CLOSE_CAMERA) { //加入一个人
+                recv_queue.push_msg(recvJson);
+            } else if (msgtype == AUDIO_RECV) { // 记得输入数据长度
+                std::string data = (*recvJson).at("data").get<std::string>();
+                QByteArray byteArray(data.c_str(), data.length());
+                QByteArray rc = QByteArray::fromBase64(byteArray);
+                QByteArray rdc = qUncompress(rc);
+                (*recvJson).at("data") = rdc.toStdString();
 
-                            msg->msg_type=msgtype;
-                            msg->msg_data = (uchar*)malloc((quint64)data_size);
-                            if(msg->msg_data == nullptr){
-                                free(msg->msg_data);
-                                LOG_DEBUG << "CREATE_MEETING_RESPONSE malloc MESG.data failed";
-                            }else{
-                                memset(msg->msg_data, 0, (quint64)data_size);
-                                memcpy(msg->msg_data, &roomNo, data_size);
-                                msg->msg_len=data_size;
-                                recv_queue.push_msg(msg);
-                            }
-                        }
-                    }else if(msgtype == JOIN_MEETING_RESPONSE) {
-                        qint32 c;
-                        memcpy(&c, m_recvbuf + MSG_HEADER, data_size);
-
-                        MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                        if (msg == nullptr)
-                        {
-                            LOG_DEBUG << "JOIN_MEETING_RESPONSE malloc MESG failed";
-                        } else {
-                            memset(msg, 0, sizeof(MESSAGE));
-                            msg->msg_type = msgtype;
-                            msg->msg_data = (uchar*)malloc(data_size);
-                            if (msg->msg_data == NULL) {
-                                free(msg);
-                                LOG_DEBUG << "JOIN_MEETING_RESPONSE malloc MESG.data failed";
-                            } else {
-                                memset(msg->msg_data, 0, data_size);
-                                memcpy(msg->msg_data, &c, data_size);
-
-                                msg->msg_len = data_size;
-                                recv_queue.push_msg(msg);
-                            }
-                        }
-                    }else if(msgtype == PARTNER_JOIN2){
-                        MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                        if (msg == nullptr) {
-                            LOG_DEBUG << "PARTNER_JOIN2 malloc MESG error";
-                        }else {
-                            memset(msg, 0, sizeof(MESSAGE));
-                            msg->msg_type = msgtype;
-                            msg->msg_len = data_size;
-                            msg->msg_data = (uchar*)malloc(data_size);
-                            if (msg->msg_data == nullptr) {
-                                free(msg);
-                                LOG_DEBUG << "PARTNER_JOIN2 malloc MESG.data error";
-                            } else {
-                                memset(msg->msg_data, 0, data_size);
-                                uint32_t ip;
-                                int pos = 0;
-                                for (int i = 0; i < data_size / sizeof(uint32_t); i++) {\
-                                    // 一次读四个字节 代表房间成员ip地址
-                                    qFromBigEndian<uint32_t>(m_recvbuf + MSG_HEADER + pos, sizeof(uint32_t), &ip);
-                                    memcpy_s(msg->msg_data + pos, data_size - pos, &ip, sizeof(uint32_t));
-                                    pos += sizeof(uint32_t);
-                                }
-                                recv_queue.push_msg(msg);
-                            }
-                        }
-                    }
-                }else if (msgtype == IMG_RECV || msgtype == PARTNER_JOIN
-                          || msgtype == PARTNER_EXIT || msgtype == AUDIO_RECV
-                          || msgtype == CLOSE_CAMERA || msgtype == TEXT_RECV) {
-                    quint32 ip;
-                    qFromBigEndian<quint32>(m_recvbuf + 3, 4, &ip);
-                    if (msgtype == IMG_RECV) {
-                        QByteArray cc((char *) m_recvbuf + MSG_HEADER, data_size);
-                        QByteArray rc = QByteArray::fromBase64(cc);
-                        QByteArray rdc = qUncompress(rc);//解压缩
-                        //将消息加入到接收队列
-                        if (rdc.size() > 0)
-                        {
-                            MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                            if (msg == nullptr) {
-                                LOG_DEBUG << " malloc failed";
-                            } else {
-                                memset(msg, 0, sizeof(MESSAGE));
-                                msg->msg_type = msgtype;
-                                msg->msg_data = (uchar*)malloc(rdc.size()); // 10 = format + width + width
-                                if (msg->msg_data == NULL) {
-                                    free(msg);
-                                    LOG_DEBUG << " malloc failed";
-                                } else {
-                                    memset(msg->msg_data, 0, rdc.size());
-                                    memcpy_s(msg->msg_data, rdc.size(), rdc.data(), rdc.size());
-                                    msg->msg_len = rdc.size();
-                                    msg->ip = ip;
-                                    recv_queue.push_msg(msg);
-                                }
-                            }
-                        }
-                    } else if (msgtype == PARTNER_JOIN || msgtype == PARTNER_EXIT || msgtype == CLOSE_CAMERA) {
-                        MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                        if (msg == nullptr) {
-                            LOG_DEBUG << " malloc failed";
-                        } else {
-                            memset(msg, 0, sizeof(MESSAGE));
-                            msg->msg_type = msgtype;
-                            msg->ip = ip;
-                            recv_queue.push_msg(msg);
-                        }
-                    } else if (msgtype == AUDIO_RECV) {
-                        QByteArray cc((char*)m_recvbuf + MSG_HEADER, data_size);
-                        QByteArray rc = QByteArray::fromBase64(cc);
-                        QByteArray rdc = qUncompress(rc);
-
-                        if (rdc.size() > 0) {
-                            MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                            if (msg == nullptr) {
-                                LOG_DEBUG << "malloc failed";
-                            } else {
-                                memset(msg, 0, sizeof(MESSAGE));
-                                msg->msg_type = AUDIO_RECV;
-                                msg->ip = ip;
-
-                                msg->msg_data = (uchar*)malloc(rdc.size());
-                                if (msg->msg_data == nullptr)
-                                {
-                                    free(msg);
-                                    LOG_DEBUG << "malloc msg.data failed";
-                                }
-                                else
-                                {
-                                    memset(msg->msg_data, 0, rdc.size());
-                                    memcpy_s(msg->msg_data, rdc.size(), rdc.data(), rdc.size());
-                                    msg->msg_len = rdc.size();
-                                    msg->ip = ip;
-                                    recv_audioQueue.push_msg(msg);
-                                }
-                            }
-                        }
-                    } else if(msgtype == TEXT_RECV) {
-                        //解压缩
-                        QByteArray cc((char *)m_recvbuf + MSG_HEADER, data_size);
-                        std::string rr = qUncompress(cc).toStdString();
-                        if(rr.size() > 0)
-                        {
-                            MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-                            if (msg == nullptr) {
-                                LOG_DEBUG << "malloc failed";
-                            } else {
-                                memset(msg, 0, sizeof(MESSAGE));
-                                msg->msg_type = TEXT_RECV;
-                                msg->ip = ip;
-                                msg->msg_data = (uchar*)malloc(rr.size());
-                                if (msg->msg_data == nullptr) {
-                                    free(msg);
-                                    LOG_DEBUG << "malloc msg.data failed";
-                                } else {
-                                    memset(msg->msg_data, 0, rr.size());
-                                    memcpy_s(msg->msg_data, rr.size(), rr.data(), rr.size());
-                                    msg->msg_len = rr.size();
-                                    recv_queue.push_msg(msg);
-                                }
-                            }
-                        }
-                    }
-                }else {
-                    LOG_DEBUG << "Package error";
-                }
-                memmove_s(m_recvbuf, 4 * MB, m_recvbuf + MSG_HEADER + data_size + 1, m_hasReceive - ((quint64)data_size + 1 + MSG_HEADER));
-                m_hasReceive -= ((quint64)data_size + 1 + MSG_HEADER);
+                recv_audioQueue.push_msg(recvJson);
+            } else if(msgtype == TEXT_RECV) {
+                recv_queue.push_msg(recvJson);
+                //                //解压缩
+                //                QByteArray cc((char *)m_recvbuf + MSG_HEADER, data_size);
+                //                std::string rr = qUncompress(cc).toStdString();
+                //                if(rr.size() > 0)
+                //                {
+                //                    MESSAGE* msg = (MESSAGE*)malloc(sizeof(MESSAGE));
+                //                    if (msg == nullptr) {
+                //                        LOG_DEBUG << "malloc failed";
+                //                    } else {
+                //                        memset(msg, 0, sizeof(MESSAGE));
+                //                        msg->msg_type = TEXT_RECV;
+                //                        msg->ip = ip;
+                //                        msg->msg_data = (uchar*)malloc(rr.size());
+                //                        if (msg->msg_data == nullptr) {
+                //                            free(msg);
+                //                            LOG_DEBUG << "malloc msg.data failed";
+                //                        } else {
+                //                            memset(msg->msg_data, 0, rr.size());
+                //                            memcpy_s(msg->msg_data, rr.size(), rr.data(), rr.size());
+                //                            msg->msg_len = rr.size();
+                //                            recv_queue.push_msg(msg);
+                //                        }
+                //                    }
+                //                }
             }
         }else {
-            return ;
+            LOG_DEBUG << "Package error";
         }
     }
 }
@@ -414,18 +321,13 @@ void MyTcpSocket::stopImmediately()
 void MyTcpSocket::errorDetect(QAbstractSocket::SocketError error)
 {
     LOG_DEBUG <<"Sock error" <<QThread::currentThreadId();
-    MESSAGE *msg = (MESSAGE*)malloc(sizeof(MESSAGE));
-    if(msg == nullptr){
-        LOG_DEBUG << "errdect malloc error";
+    json msg;
+    if (error == QAbstractSocket::RemoteHostClosedError) {
+        msg["msgType"] = RemoteHostClosedError;
     } else {
-        memset(msg, 0, sizeof(MESSAGE));
-        if (error == QAbstractSocket::RemoteHostClosedError) {
-            msg->msg_type = RemoteHostClosedError;
-        } else {
-            msg->msg_type = OtherNetError;
-        }
-        recv_queue.push_msg(msg);
+        msg["msgType"] = OtherNetError;
     }
+    recv_queue.push_msg(&msg);
 }
 
 

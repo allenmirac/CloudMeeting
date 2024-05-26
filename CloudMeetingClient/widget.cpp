@@ -9,6 +9,23 @@ Widget::Widget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::Widget)
 {
+    // initial style
+    // 设置QSS文件路径
+    QString qssPath = ":/style.qss"; // 根据实际文件路径进行修改
+
+    // 读取QSS文件内容
+    QFile qssFile(qssPath);
+    if (qssFile.open(QFile::ReadOnly))
+    {
+        QString styleSheet = QLatin1String(qssFile.readAll());
+        this->setStyleSheet(styleSheet);
+        qssFile.close();
+    }
+
+    // initial icon
+    QIcon icon(":/img/video.png");
+    setWindowIcon(icon);
+
 
     // 初始化日志
     initLog();
@@ -16,8 +33,10 @@ Widget::Widget(QWidget *parent)
     //开启日志线程
     logqueue = new LogQueue();
     logqueue->start();
+    m_pWgt = new QWidget;
+    m_pLayout = new QVBoxLayout();//网格布局
 
-    qDebug() << "main: " <<QThread::currentThread();
+    LOG_INFO << "main: " <<QThread::currentThread();
     qRegisterMetaType<MSG_TYPE>();
 
     WRITE_LOG("-------------------------Application Start---------------------------");
@@ -30,8 +49,8 @@ Widget::Widget(QWidget *parent)
 
     ui->setupUi(this);
 
-//    ui->openaudioBtn->setText(QString(openaudioBtn).toUtf8());
-//    ui->openvideoBtn->setText(QString(OPENVIDEO).toUtf8());
+    ui->openaudioBtn->setText(QString(OPENAUDIO).toUtf8());
+    ui->openvideoBtn->setText(QString(OPENVIDEO).toUtf8());
 
     this->setGeometry(Widget::pos);
     this->setMinimumSize(QSize(Widget::pos.width() * 0.7, Widget::pos.height() * 0.7));
@@ -53,9 +72,6 @@ Widget::Widget(QWidget *parent)
     _sendImg->moveToThread(_imgThread); //新起线程接受视频帧
     _sendImg->start();
     //_imgThread->start();
-    //处理每一帧数据
-
-    //--------------------------------------------------
 
 
     //数据处理（局部线程）
@@ -72,7 +88,7 @@ Widget::Widget(QWidget *parent)
     _textThread->start(); // 加入线程
     _sendText->start(); // 发送
 
-    connect(this, SIGNAL(PushText(MSG_TYPE,QString)), _sendText, SLOT(pushToTextQueue(MSG_TYPE,QString)));
+    connect(this, SIGNAL(PushText(MSG_TYPE,  QString, quint32)), _sendText, SLOT(pushToTextQueue(MSG_TYPE,  QString, quint32)));
     //-----------------------------------------------------------
 
     //配置摄像头
@@ -85,7 +101,9 @@ Widget::Widget(QWidget *parent)
 
     connect(_myvideosurface, SIGNAL(frameAvailable(QVideoFrame)), this, SLOT(cameraImageCapture(QVideoFrame)));
     connect(this, SIGNAL(pushImg(QImage)), _sendImg, SLOT(ImageCapture(QImage)));
-
+    //预览窗口重定向在MyVideoSurface
+    _camera->setViewfinder(_myvideosurface);
+    _camera->setCaptureMode(QCamera::CaptureStillImage);
 
     //监听_imgThread退出信号
     connect(_imgThread, SIGNAL(finished()), _sendImg, SLOT(clearImgQueue()));
@@ -93,12 +111,10 @@ Widget::Widget(QWidget *parent)
 
     //------------------启动接收数据线程-------------------------
     _recvThread = new RecvSolve();
-    connect(_recvThread, SIGNAL(dataRecv(MESSAGE*)), this, SLOT(datasolve(MESSAGE*)), Qt::BlockingQueuedConnection);
+    connect(_recvThread, SIGNAL(dataRecv(json*)), this, SLOT(datasolve(json*)), Qt::BlockingQueuedConnection);
     _recvThread->start();
 
-    //预览窗口重定向在MyVideoSurface
-    _camera->setViewfinder(_myvideosurface);
-    _camera->setCaptureMode(QCamera::CaptureStillImage);
+
 
     //音频
     _ainput = new AudioInput();
@@ -120,19 +136,20 @@ Widget::Widget(QWidget *parent)
     ui->listWidget->setStyleSheet("QScrollBar:vertical { width:8px; background:rgba(0,0,0,0%); margin:0px,0px,0px,0px; padding-top:9px; padding-bottom:9px; } QScrollBar::handle:vertical { width:8px; background:rgba(0,0,0,25%); border-radius:4px; min-height:20; } QScrollBar::handle:vertical:hover { width:8px; background:rgba(0,0,0,50%); border-radius:4px; min-height:20; } QScrollBar::add-line:vertical { height:9px;width:8px; border-image:url(:/images/a/3.png); subcontrol-position:bottom; } QScrollBar::sub-line:vertical { height:9px;width:8px; border-image:url(:/images/a/1.png); subcontrol-position:top; } QScrollBar::add-line:vertical:hover { height:9px;width:8px; border-image:url(:/images/a/4.png); subcontrol-position:bottom; } QScrollBar::sub-line:vertical:hover { height:9px;width:8px; border-image:url(:/images/a/2.png); subcontrol-position:top; } QScrollBar::add-page:vertical,QScrollBar::sub-page:vertical { background:rgba(0,0,0,10%); border-radius:4px; }");
 
     QFont te_font = this->font();
-    te_font.setFamily("MicrosoftYaHei");
+//    te_font.setFamily("MicrosoftYaHei");
     te_font.setPointSize(12);
 
     ui->listWidget->setFont(te_font);
 
     ui->tabWidget->setCurrentIndex(1);
     ui->tabWidget->setCurrentIndex(0);
+    this->setWindowTitle("云会议");
 }
 
 
 void Widget::cameraImageCapture(QVideoFrame frame)
 {
-//    qDebug() << QThread::currentThreadId() << this;
+    //    LOG_INFO << QThread::currentThreadId() << this;
 
     if(frame.isValid() && frame.isReadable())
     {
@@ -143,7 +160,8 @@ void Widget::cameraImageCapture(QVideoFrame frame)
 
         QImage img =  videoImg.transformed(matrix, Qt::FastTransformation).scaled(ui->mainShowLabel->size());
 
-        if(partner.size() > 1)
+        // 房间人数大于1时才会传送
+        if(partner.size() >= 1)
         {
             emit pushImg(img);
         }
@@ -156,7 +174,7 @@ void Widget::cameraImageCapture(QVideoFrame frame)
         Partner *p = partner[_mytcpSocket->getLocalIp()];
         if(p) p->setPix(img);
 
-        //qDebug()<< "format: " <<  videoImg.format() << "size: " << videoImg.size() << "byteSIze: "<< videoImg.sizeInBytes();
+        //LOG_INFO<< "format: " <<  videoImg.format() << "size: " << videoImg.size() << "byteSIze: "<< videoImg.sizeInBytes();
     }
     frame.unmap();
 }
@@ -229,11 +247,14 @@ void Widget::on_createmeetBtn_clicked()
 {
     if(false == _createmeet)
     {
+        LOG_DEBUG << "create meeting";
         ui->createmeetBtn->setDisabled(true);
         ui->openaudioBtn->setDisabled(true);
         ui->openvideoBtn->setDisabled(true);
         ui->exitmeetBtn->setDisabled(true);
-        emit PushText(CREATE_MEETING); //将 “创建会议"加入到发送队列
+        QString roomId = ui->lineEdit_roomId->text();
+        quint32 ip = _mytcpSocket->getLocalIp();
+        emit PushText(CREATE_MEETING, roomId, ip); //将 “创建会议"加入到发送队列
         WRITE_LOG("create meeting");
     }
 }
@@ -253,6 +274,7 @@ void Widget::paintEvent(QPaintEvent *event)
 //退出会议（1，加入的会议， 2，自己创建的会议）
 void Widget::on_exitmeetBtn_clicked()
 {
+    QMessageBox::warning(this, "Information", "退出会议" , QMessageBox::Yes, QMessageBox::Yes);
     if(_camera->status() == QCamera::ActiveStatus)
     {
         _camera->stop();
@@ -268,14 +290,16 @@ void Widget::on_exitmeetBtn_clicked()
     // 关闭套接字
 
     //关闭socket
+    uint32_t ip = _mytcpSocket->getLocalIp();
+    QString roomUserNo = QString(partner.size());
     _mytcpSocket->disconnectFromHost();
     _mytcpSocket->wait();
 
     ui->outlogLabel->setText(tr("已退出会议"));
 
     ui->connectserverBtn->setDisabled(false);
-//    ui->groupBox_at->setTitle(QString("主屏幕"));
-//    ui->groupBox->setTitle(QString("副屏幕"));
+    //    ui->groupBox_at->setTitle(QString("主屏幕"));
+    //    ui->groupBox->setTitle(QString("副屏幕"));
     //清除聊天记录
     while(ui->listWidget->count() > 0)
     {
@@ -286,12 +310,8 @@ void Widget::on_exitmeetBtn_clicked()
     }
     iplist.clear();
     ui->plainTextEdit->setCompleter(iplist);
-
-
+    emit PushText(PARTNER_EXIT, roomUserNo, ip);
     WRITE_LOG("exit meeting");
-
-    QMessageBox::warning(this, "Information", "退出会议" , QMessageBox::Yes, QMessageBox::Yes);
-
     //-----------------------------------------
 }
 
@@ -325,9 +345,12 @@ void Widget::on_openvideoBtn_clicked()
 
 void Widget::on_openaudioBtn_clicked()
 {
+
     if (!_createmeet && !_joinmeet) return;
+    LOG_DEBUG << "openAudio enter";
     if (ui->openaudioBtn->text().toUtf8() == QString(OPENAUDIO).toUtf8())
     {
+        LOG_DEBUG << "openAudio";
         emit startAudio();
         ui->openaudioBtn->setText(QString(CLOSEAUDIO).toUtf8());
     }
@@ -342,15 +365,15 @@ void Widget::closeImg(quint32 ip)
 {
     if (!partner.contains(ip))
     {
-        qDebug() << "close img error";
+        LOG_WARN << "close img error";
         return;
     }
     Partner * p = partner[ip];
-    p->setPix(QImage(":/img/1.jpg"));
+    p->setPix(QImage(":/img/2.jpg"));
 
     if(mainip == ip)
     {
-        ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(ui->mainShowLabel->size())));
+        ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
     }
 }
 
@@ -407,45 +430,44 @@ void Widget::audioError(QString err)
     QMessageBox::warning(this, "Audio error", err, QMessageBox::Yes);
 }
 
-void Widget::datasolve(MESSAGE *msg)
+void Widget::datasolve(json* msg)
 {
-    if(msg->msg_type == CREATE_MEETING_RESPONSE)
+    json data = *msg;
+    int msg_type = data["msgType"];
+    if(msg_type == CREATE_MEETING_RESPONSE)
     {
-        int roomno;
-        memcpy(&roomno, msg->msg_data, msg->msg_len);
-
-        if(roomno != 0)
+        int roomId = (*msg)["roomId"];
+        if(roomId != -1)
         {
-            QMessageBox::information(this, "Room No", QString("房间号：%1").arg(roomno), QMessageBox::Yes, QMessageBox::Yes);
-
-            ui->groupBox_mainShow->setTitle(QString("主屏幕(房间号: %1)").arg(roomno));
-            ui->outlogLabel->setText(QString("创建成功 房间号: %1").arg(roomno) );
+            // size_t roomUserNo = (*msg)["roomUserNo"];
+            QMessageBox::information(this, "Room No", QString("房间号：%1").arg(roomId), QMessageBox::Yes, QMessageBox::Yes);
+            ui->groupBox_mainShow->setTitle(QString("主屏幕(房间号: %1)").arg(roomId));
+            ui->outlogLabel->setText(QString("创建成功 房间号: %1").arg(roomId) );
             _createmeet = true;
             ui->exitmeetBtn->setDisabled(false);
             ui->openvideoBtn->setDisabled(false);
             ui->joinmeetBtn->setDisabled(true);
-
-            WRITE_LOG("succeed creating room %d", roomno);
+            WRITE_LOG("succeed creating room %d", roomId);
             //添加用户自己
             addPartner(_mytcpSocket->getLocalIp());
             mainip = _mytcpSocket->getLocalIp();
             ui->groupBox_mainShow->setTitle(QHostAddress(mainip).toString());
-            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(ui->mainShowLabel->size())));
+            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
         }
         else
         {
             _createmeet = false;
-            QMessageBox::information(this, "Room Information", QString("无可用房间"), QMessageBox::Yes, QMessageBox::Yes);
-            ui->outlogLabel->setText(QString("无可用房间"));
+            QMessageBox::information(this, "Room Information", QString("房间号已存在"), QMessageBox::Yes, QMessageBox::Yes);
+            ui->outlogLabel->setText(QString("房间号已存在"));
             ui->createmeetBtn->setDisabled(false);
             WRITE_LOG("no empty room");
+            LOG_DEBUG << "房间号已存在";
         }
     }
-    else if(msg->msg_type == JOIN_MEETING_RESPONSE)
+    else if(msg_type == JOIN_MEETING_RESPONSE)
     {
-        qint32 c;
-        memcpy(&c, msg->msg_data, msg->msg_len);
-        if(c == 0)
+        int roomUserNo = data["roomUserNo"];
+        if(roomUserNo == 0)
         {
             QMessageBox::information(this, "Meeting Error", tr("会议不存在") , QMessageBox::Yes, QMessageBox::Yes);
             ui->outlogLabel->setText(QString("会议不存在"));
@@ -456,13 +478,13 @@ void Widget::datasolve(MESSAGE *msg)
             ui->connectserverBtn->setDisabled(true);
             _joinmeet = false;
         }
-        else if(c == -1)
+        else if(roomUserNo == -1)
         {
             QMessageBox::warning(this, "Meeting information", "成员已满，无法加入" , QMessageBox::Yes, QMessageBox::Yes);
             ui->outlogLabel->setText(QString("成员已满，无法加入"));
             WRITE_LOG("full room, cannot join");
         }
-        else if (c > 0)
+        else if (roomUserNo > 0)
         {
             QMessageBox::warning(this, "Meeting information", "加入成功" , QMessageBox::Yes, QMessageBox::Yes);
             ui->outlogLabel->setText(QString("加入成功"));
@@ -471,104 +493,140 @@ void Widget::datasolve(MESSAGE *msg)
             addPartner(_mytcpSocket->getLocalIp());
             mainip = _mytcpSocket->getLocalIp();
             ui->groupBox_mainShow->setTitle(QHostAddress(mainip).toString());
-            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(ui->mainShowLabel->size())));
+            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
             ui->joinmeetBtn->setDisabled(true);
             ui->exitmeetBtn->setDisabled(false);
             ui->createmeetBtn->setDisabled(true);
             _joinmeet = true;
         }
     }
-    else if(msg->msg_type == IMG_RECV)
+    else if(msg_type == BROAD_ADDUSER_MESSAGE){
+        uint32_t ip = data["ip"];
+        // int roomUserNo = data["roomUserNo"];
+        int roomId = data["roomId"];
+        quint32 localIp = _mytcpSocket->getLocalIp();
+        std::vector<uint32_t> vecIp = data["roomUserIp"].get<std::vector<uint32_t> >();
+        uint32_t tempIp;
+        for (uint i = 0; i < vecIp.size(); i++)
+        {
+            tempIp=vecIp[i];
+            if(tempIp != localIp){
+                Partner* p = addPartner(tempIp);
+                if (p)
+                {
+                    p->setPix(QImage(":/img/2.jpg"));
+                    iplist << QString("@") + QHostAddress(ip).toString();
+                }
+            }
+        }
+        ui->plainTextEdit->setCompleter(iplist);
+        ui->openvideoBtn->setDisabled(false);
+        LOG_DEBUG << "房间里面又加入了一个人" << roomId;
+    }
+    else if(msg_type == IMG_RECV)
     {
-        QHostAddress a(msg->ip);
-        qDebug() << a.toString();
-        QImage img;
-        img.loadFromData(msg->msg_data, msg->msg_len);
-        if(partner.count(msg->ip) == 1)
-        {
-            Partner* p = partner[msg->ip];
-            p->setPix(img);
-        }
-        else
-        {
-            Partner* p = addPartner(msg->ip);
-            p->setPix(img);
-        }
+//        QHostAddress a(msg->ip);
+//        LOG_INFO << a.toString();
+        std::string msgData = data["data"].get<std::string>();
+        QByteArray byte = QByteArray::fromStdString(msgData);
+        QImage img(byte);
+//        img.loadFromData(byte.data(), byte.size());
+//        if(partner.count(msg->ip) == 1)
+//        {
+//            Partner* p = partner[msg->ip];
+//            p->setPix(img);
+//        }
+//        else
+//        {
+//            Partner* p = addPartner(msg->ip);
+//            p->setPix(img);
+//        }
 
-        if(msg->ip == mainip)
-        {
-            ui->mainShowLabel->setPixmap(QPixmap::fromImage(img).scaled(ui->mainShowLabel->size()));
-        }
+//        if(msg->ip == mainip)
+//        {
+//            ui->mainShowLabel->setPixmap(QPixmap::fromImage(img).scaled(ui->mainShowLabel->size()));
+//        }
         repaint();
     }
-    else if(msg->msg_type == TEXT_RECV)
+    else if(msg_type == TEXT_RECV)
     {
-        QString str = QString::fromStdString(std::string((char *)msg->msg_data, msg->msg_len));
-        //qDebug() << str;
+//        std::string data = (*recvJson)["data"].get<std::string>();
+//        QByteArray byteArray(data.c_str(), data.length());
+//        QByteArray rc = QByteArray::fromBase64(byteArray);
+//        QByteArray rdc = qUncompress(rc);
+//        QString text = QString(rdc);
+        std::string msgData = data["text"].get<std::string>();
+        quint32 ip = data["ip"];
+        QString base64CompressedData = QString::fromStdString(msgData);
+        QByteArray compressedData = QByteArray::fromBase64(base64CompressedData.toUtf8());
+        QByteArray decompressedData = qUncompress(compressedData);
+        QString str = QString::fromUtf8(decompressedData);
+        LOG_DEBUG << "接收到的消息:" << str;
         QString time = QString::number(QDateTime::currentDateTimeUtc().toTime_t());
         ChatMessage *message = new ChatMessage(ui->listWidget);
         QListWidgetItem *item = new QListWidgetItem();
         dealMessageTime(time);
-        dealMessage(message, item, str, time, QHostAddress(msg->ip).toString() ,ChatMessage::User_She);
+        dealMessage(message, item, str, time, QHostAddress(ip).toString(), ChatMessage::User_She);
         if(str.contains('@' + QHostAddress(_mytcpSocket->getLocalIp()).toString()))
         {
             QSound::play(":/img/2.wav");
         }
     }
-    else if(msg->msg_type == PARTNER_JOIN)
+    //    else if(msg_type == PARTNER_JOIN)
+    //    {
+    //        Partner* p = addPartner(msg->ip);
+    //        if(p)
+    //        {
+    //            p->setPix(QImage(":/img/1.jpg"));
+    //            ui->outlogLabel->setText(QString("%1 join meeting").arg(QHostAddress(msg->ip).toString()));
+    //            iplist.append(QString("@") + QHostAddress(msg->ip).toString());
+    //            ui->plainTextEdit->setCompleter(iplist);
+    //        }
+    //    }
+    else if(msg_type == PARTNER_EXIT)
     {
-        Partner* p = addPartner(msg->ip);
-        if(p)
+        uint32_t ip = data["ip"];
+        removePartner(ip);
+        LOG_DEBUG << ip << " eixt !!!!!!!!";
+        if(mainip == ip)
         {
-            p->setPix(QImage(":/img/1.jpg"));
-            ui->outlogLabel->setText(QString("%1 join meeting").arg(QHostAddress(msg->ip).toString()));
-            iplist.append(QString("@") + QHostAddress(msg->ip).toString());
-            ui->plainTextEdit->setCompleter(iplist);
+            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
         }
-    }
-    else if(msg->msg_type == PARTNER_EXIT)
-    {
-        removePartner(msg->ip);
-        if(mainip == msg->ip)
-        {
-            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(ui->mainShowLabel->size())));
-        }
-        if(iplist.removeOne(QString("@") + QHostAddress(msg->ip).toString()))
+        if(iplist.removeOne(QString("@") + QHostAddress(ip).toString()))
         {
             ui->plainTextEdit->setCompleter(iplist);
         }
         else
         {
-            qDebug() << QHostAddress(msg->ip).toString() << "not exist";
-            WRITE_LOG("%s not exist",QHostAddress(msg->ip).toString().toStdString().c_str());
+            LOG_INFO << QHostAddress(ip).toString() << "not exist";
+            WRITE_LOG("%s not exist",QHostAddress(ip).toString().toStdString().c_str());
         }
-        ui->outlogLabel->setText(QString("%1 exit meeting").arg(QHostAddress(msg->ip).toString()));
+        ui->outlogLabel->setText(QString("%1 exit meeting").arg(QHostAddress(ip).toString()));
     }
-    else if (msg->msg_type == CLOSE_CAMERA)
+    //    else if (msg_type == CLOSE_CAMERA)
+    //    {
+    //        closeImg(msg->ip);
+    //    }
+    //    else if (msg_type == PARTNER_JOIN2)
+    //    {
+    //        uint32_t ip;
+    //        int other = msg->msg_len / sizeof(uint32_t), pos = 0;
+    //        for (int i = 0; i < other; i++)
+    //        {
+    //            memcpy_s(&ip, sizeof(uint32_t), msg->msg_data + pos , sizeof(uint32_t));
+    //            pos += sizeof(uint32_t);
+    //            Partner* p = addPartner(ip);
+    //            if (p)
+    //            {
+    //                p->setPix(QImage(":/img/2.jpg"));
+    //                iplist << QString("@") + QHostAddress(ip).toString();
+    //            }
+    //        }
+    //        ui->plainTextEdit->setCompleter(iplist);
+    //        ui->openvideoBtn->setDisabled(false);
+    //    }
+    else if(msg_type == RemoteHostClosedError)
     {
-        closeImg(msg->ip);
-    }
-    else if (msg->msg_type == PARTNER_JOIN2)
-    {
-        uint32_t ip;
-        int other = msg->msg_len / sizeof(uint32_t), pos = 0;
-        for (int i = 0; i < other; i++)
-        {
-            memcpy_s(&ip, sizeof(uint32_t), msg->msg_data + pos , sizeof(uint32_t));
-            pos += sizeof(uint32_t);
-            Partner* p = addPartner(ip);
-            if (p)
-            {
-                p->setPix(QImage(":/img/1.jpg"));
-                iplist << QString("@") + QHostAddress(ip).toString();
-            }
-        }
-        ui->plainTextEdit->setCompleter(iplist);
-        ui->openvideoBtn->setDisabled(false);
-    }
-    else if(msg->msg_type == RemoteHostClosedError)
-    {
-
         clearPartner();
         _mytcpSocket->disconnectFromHost();
         _mytcpSocket->wait();
@@ -589,7 +647,7 @@ void Widget::datasolve(MESSAGE *msg)
         ui->plainTextEdit->setCompleter(iplist);
         if(_createmeet || _joinmeet) QMessageBox::warning(this, "Meeting Information", "会议结束" , QMessageBox::Yes, QMessageBox::Yes);
     }
-    else if(msg->msg_type == OtherNetError)
+    else if(msg_type == OtherNetError)
     {
         QMessageBox::warning(NULL, "Network Error", "网络异常" , QMessageBox::Yes, QMessageBox::Yes);
         clearPartner();
@@ -597,39 +655,37 @@ void Widget::datasolve(MESSAGE *msg)
         _mytcpSocket->wait();
         ui->outlogLabel->setText(QString("网络异常......"));
     }
-    if(msg->msg_data)
-    {
-        free(msg->msg_data);
-        msg->msg_data = NULL;
-    }
-    if(msg)
-    {
-        free(msg);
-        msg = NULL;
-    }
+
 }
 
+// partner 以ip来区别
 Partner* Widget::addPartner(quint32 ip)
 {
-    if (partner.contains(ip)) return NULL;
-    Partner *p = new Partner(ui->scrollAreaWidgetContents ,ip);
+    // if (partner.contains(ip)) return NULL;
+    Partner *p = new Partner(ui->scrollArea,ip);
     if (p == NULL)
     {
-        qDebug() << "new Partner error";
-        return NULL;
+        LOG_WARN << "new Partner error";
+        return nullptr;
     }
     else
     {
-        connect(p, SIGNAL(sendip(quint32)), this, SLOT(recvip(quint32)));
-        partner.insert(ip, p);
-        ui->verticalLayout_3->addWidget(p, 1);
-
+        connect(p, SIGNAL(sendIp(quint32)), this, SLOT(recvip(quint32)));
+        //        partner.insert(ip, p); // QT的map插入相同的值只会覆盖
+        partner.insertMulti(ip, p);
+        //        ui->verticalLayout_3->addWidget(p, 1);
+        m_pLayout->addWidget(p);
+        m_pWgt->setLayout(m_pLayout);
+        ui->scrollArea->setWidget(m_pWgt);
+        LOG_DEBUG << ip << "]房间人数: " << partner.size();
         //当有人员加入时，开启滑动条滑动事件，开启输入(只有自己时，不打开)
-        if (partner.size() > 1)
+        if (partner.size() >= 1)
         {
-            connect(this, SIGNAL(volumnChange(int)), _ainput, SLOT(setVolumn(int)), Qt::UniqueConnection);
-            connect(this, SIGNAL(volumnChange(int)), _aoutput, SLOT(setVolumn(int)), Qt::UniqueConnection);
+            _ainput->setVolume(100); // 先设置为100
+            connect(this, SIGNAL(volumnChange(int)), _ainput, SLOT(setVolume(int)), Qt::UniqueConnection);
+            connect(this, SIGNAL(volumnChange(int)), _aoutput, SLOT(setVolume(int)), Qt::UniqueConnection);
             ui->openaudioBtn->setDisabled(false);
+            ui->openvideoBtn->setDisabled(false);
             ui->sendMsgBtn->setDisabled(false);
             _aoutput->startPlay();
         }
@@ -646,12 +702,14 @@ void Widget::removePartner(quint32 ip)
         ui->verticalLayout_3->removeWidget(p);
         delete p;
         partner.remove(ip);
-
+        m_pLayout->removeWidget(p);
+        m_pWgt->setLayout(m_pLayout);
+        ui->scrollArea->setWidget(m_pWgt);
         //只有自已一个人时，关闭传输音频
         if (partner.size() <= 1)
         {
-            disconnect(_ainput, SLOT(setVolumn(int)));
-            disconnect(_aoutput, SLOT(setVolumn(int)));
+            disconnect(_ainput, SLOT(setVolume(int)));
+            disconnect(_aoutput, SLOT(setVolume(int)));
             _ainput->stopCollect();
             _aoutput->stopPlay();
             ui->openaudioBtn->setText(QString(OPENAUDIO).toUtf8());
@@ -677,8 +735,8 @@ void Widget::clearPartner()
     }
 
     //关闭传输音频
-    disconnect(_ainput, SLOT(setVolumn(int)));
-    disconnect(_aoutput, SLOT(setVolumn(int)));
+    disconnect(_ainput, SLOT(setVolume(int)));
+    disconnect(_aoutput, SLOT(setVolume(int)));
     //关闭音频播放与采集
     _ainput->stopCollect();
     _aoutput->stopPlay();
@@ -708,10 +766,10 @@ void Widget::recvip(quint32 ip)
         Partner* p = partner[ip];
         p->setStyleSheet("border-width: 1px; border-style: solid; border-color:rgba(255, 0 , 0, 0.7)");
     }
-    ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/1.jpg").scaled(ui->mainShowLabel->size())));
+    ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
     mainip = ip;
     ui->groupBox_mainShow->setTitle(QHostAddress(mainip).toString());
-    qDebug() << ip;
+    LOG_INFO << ip;
 }
 
 /*
@@ -722,7 +780,7 @@ void Widget::on_joinmeetBtn_clicked()
 {
     QString roomNo = ui->meetno->text();
 
-    QRegExp roomreg("^[1-9][0-9]{1,4}$");
+    QRegExp roomreg("^[1-9][0-9]{1,5}$");
     QRegExpValidator  roomvalidate(roomreg);
     int pos = 0;
     if(roomvalidate.validate(roomNo, pos) != QValidator::Acceptable)
@@ -732,7 +790,9 @@ void Widget::on_joinmeetBtn_clicked()
     else
     {
         //加入发送队列
-        emit PushText(JOIN_MEETING, roomNo);
+        LOG_DEBUG << JOIN_MEETING << "," << roomNo;
+        quint32 ip=+_mytcpSocket->getLocalIp();
+        emit PushText(JOIN_MEETING, roomNo, ip);
     }
 }
 
@@ -751,17 +811,17 @@ void Widget::on_sendMsgBtn_clicked()
     QString msg = ui->plainTextEdit->toPlainText().trimmed();
     if(msg.size() == 0)
     {
-        qDebug() << "empty";
+        LOG_WARN << "empty";
         return;
     }
-    qDebug()<<msg;
+    LOG_INFO<<msg;
     ui->plainTextEdit->setPlainText("");
     QString time = QString::number(QDateTime::currentDateTimeUtc().toTime_t());
     ChatMessage *message = new ChatMessage(ui->listWidget);
     QListWidgetItem *item = new QListWidgetItem();
     dealMessageTime(time);
     dealMessage(message, item, msg, time, QHostAddress(_mytcpSocket->getLocalIp()).toString() ,ChatMessage::User_Me);
-    emit PushText(TEXT_SEND, msg);
+    emit PushText(TEXT_SEND, msg, _mytcpSocket->getLocalIp());
     ui->sendMsgBtn->setDisabled(true);
 }
 
@@ -783,9 +843,9 @@ void Widget::dealMessageTime(QString curMsgTime)
         ChatMessage* messageW = (ChatMessage *)ui->listWidget->itemWidget(lastItem);
         int lastTime = messageW->time().toInt();
         int curTime = curMsgTime.toInt();
-        qDebug() << "curTime lastTime:" << curTime - lastTime;
+        LOG_INFO << "curTime lastTime:" << curTime - lastTime;
         isShowTime = ((curTime - lastTime) > 60); // 两个消息相差一分钟
-//        isShowTime = true;
+        //        isShowTime = true;
     } else {
         isShowTime = true;
     }
@@ -803,7 +863,7 @@ void Widget::dealMessageTime(QString curMsgTime)
 
 void Widget::textSend()
 {
-    qDebug() << "send text over";
+    LOG_INFO << "send text over";
     QListWidgetItem* lastItem = ui->listWidget->item(ui->listWidget->count() - 1);
     ChatMessage* messageW = (ChatMessage *)ui->listWidget->itemWidget(lastItem);
     messageW->setTextSuccess();

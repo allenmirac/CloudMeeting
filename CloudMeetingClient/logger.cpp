@@ -115,7 +115,7 @@ static void outputMessage(QtMsgType type, const QMessageLogContext& context, con
     QDateTime dt = QDateTime::currentDateTime();
 
     //每小时一个文件
-//    QString fileNameDt = dt.toString("yyyy-MM-dd_hh");
+    //    QString fileNameDt = dt.toString("yyyy-MM-dd_hh");
 
     //每分钟一个文件
     QString fileNameDt = dt.toString("yyyy-MM-dd_hh_mm");

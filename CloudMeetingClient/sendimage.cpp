@@ -1,6 +1,6 @@
 #include "sendimage.h"
 
-extern MSG_QUEUE<MESSAGE> send_queue;
+extern MSG_QUEUE<json> send_queue;
 
 SendImage::SendImage(QObject *parent) : QThread(parent)
 {
@@ -47,34 +47,13 @@ void SendImage::run()
         m_imgQueue_lock.unlock();//解锁
         m_imgQueue_cond.wakeOne(); //唤醒添加线程
 
-        MESSAGE* imgSend = (MESSAGE*)malloc(sizeof(MESSAGE));
-        if (imgSend == NULL)
-        {
-            WRITE_LOG("malloc error");
-            qDebug() << __FILE__  <<__LINE__ << "malloc imgsend failed";
-        }
-        else
-        {
-            memset(imgSend, 0, sizeof(MESSAGE));
-            imgSend->msg_type = IMG_SEND;
-            imgSend->msg_len = img.size();
-            LOG_DEBUG << "img size :" << img.size();
-            imgSend->msg_data = (uchar*)malloc(imgSend->msg_len);
-            if (imgSend->msg_data == nullptr)
-            {
-                free(imgSend);
-                WRITE_LOG("malloc error");
-                qDebug() << "send img error";
-                continue;
-            }
-            else
-            {
-                memset(imgSend->msg_data, 0, imgSend->msg_len);
-                memcpy_s(imgSend->msg_data, imgSend->msg_len, img.data(), img.size());
-                //加入发送队列
-                send_queue.push_msg(imgSend);
-            }
-        }
+        json *imgSend = new json;
+        (*imgSend)["msgType"] = IMG_SEND;
+        QByteArray data = qCompress(QByteArray::fromStdString(img.toStdString())); //压缩
+        QString base64CompressedData = QString(data.toBase64());
+        LOG_DEBUG << "img size :" << img.size();
+        (*imgSend)["data"] = base64CompressedData.toStdString();
+        send_queue.push_msg(imgSend);
     }
 
 }
