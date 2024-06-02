@@ -14,6 +14,7 @@ ChatService::ChatService()
     msgHandlerMap_.insert({AUDIO_SEND, std::bind(&ChatService::audioSend, this, _1, _2, _3)});
     msgHandlerMap_.insert({PARTNER_EXIT, std::bind(&ChatService::quitMeeting, this, _1, _2, _3)});
     msgHandlerMap_.insert({TEXT_SEND, std::bind(&ChatService::textSend, this, _1, _2, _3)});
+    msgHandlerMap_.insert({IMG_SEND, std::bind(&ChatService::IMGSend, this, _1, _2, _3)});
 }
 
 ChatService::~ChatService()
@@ -52,7 +53,7 @@ void ChatService::broadMsg(const TcpConnectionPtr &conn, json &js, Timestamp tim
         {
             return;
         }
-        LOG_DEBUG << "需要广播加入房间消息";
+        LOG_INFO << "需要广播加入房间消息";
         std::vector<uint32_t> vecIp;
         // uint32_t ip = js["ip"];
         uint roomId = js["roomId"];
@@ -66,7 +67,6 @@ void ChatService::broadMsg(const TcpConnectionPtr &conn, json &js, Timestamp tim
             }
         }
         vecIp = room.getRoomUserIp();
-        int size = vecIp.size();
         js["roomUserIp"] = vecIp;
         for (size_t i = 0; i < vecIp.size(); i++)
         {
@@ -86,7 +86,7 @@ void ChatService::broadMsg(const TcpConnectionPtr &conn, json &js, Timestamp tim
     }
     else
     {
-        LOG_DEBUG << "房间消息广播";
+        LOG_INFO << "房间消息广播";
         uint32_t ip = js.at("ip").get<uint32_t>();
         Room room(0);
         std::vector<uint32_t> vecIp;
@@ -222,7 +222,7 @@ void ChatService::createMeeting(const TcpConnectionPtr &conn, json &js, Timestam
         else
         {
             response["msgType"] = CREATE_MEETING_RESPONSE;
-            response["roomUserNo"] = -1;
+            response["roomId"] = -1;
             LOG_INFO << "房间号已存在";
         }
         // LOG_DEBUG << "创建房间消息回复成功";
@@ -292,6 +292,11 @@ void ChatService::audioSend(const TcpConnectionPtr &conn, json &js, Timestamp ti
                 break;
             }
         }
+        if (vecIp.size() < 2)
+        {
+            LOG_INFO << "房间人数不足";
+            return;
+        }
         response["msgType"] = AUDIO_RECV;
         response["data"] = data;
         response["ip"] = ip;
@@ -317,6 +322,52 @@ void ChatService::audioSend(const TcpConnectionPtr &conn, json &js, Timestamp ti
         //     }
         //     it++;
         // }
+    }
+}
+
+void ChatService::IMGSend(const TcpConnectionPtr &conn, json &js, Timestamp time)
+{
+    MSG_TYPE msgType = js.at("msgType");
+    std::string data = js.at("data");
+    if (msgType == IMG_SEND)
+    {
+        json response;
+        uint32_t ip = 0;
+        std::vector<uint32_t> vecIp;
+        for (auto it = userConnMap_.begin(); it != userConnMap_.end(); it++)
+        {
+            if (it->second == conn)
+            {
+                ip = it->first;
+                break;
+            }
+        }
+        for (size_t i = 0; i < vecRoom_.size(); i++)
+        {
+            User *user = vecRoom_[i].getUser(ip);
+            if (user != nullptr)
+            {
+                vecIp = vecRoom_[i].getRoomUserIp();
+                break;
+            }
+        }
+        if (vecIp.size() < 2)
+        {
+            LOG_INFO << "房间人数不足";
+            return;
+        }
+        response["msgType"] = IMG_RECV;
+        response["data"] = data;
+        response["ip"] = ip;
+        // // real
+        for (size_t i = 0; i < vecIp.size(); i++)
+        {
+            if (ip != vecIp[i])
+            {
+                TcpConnectionPtr conn = userConnMap_[vecIp[i]];
+                conn->send(response.dump());
+            }
+        }
     }
 }
 

@@ -20,8 +20,8 @@ using json = nlohmann::json;
 // 将其当成函数指针来使用
 using MsgHandler = std::function<void(const TcpConnectionPtr &conn, json &js, Timestamp)>;
 
-
-class ChatService{
+class ChatService
+{
 public:
     static ChatService *instance();
     MsgHandler getHandler(int msgid);
@@ -33,12 +33,14 @@ public:
     void quitMeeting(const TcpConnectionPtr &conn, json &js, Timestamp time);
     void audioSend(const TcpConnectionPtr &conn, json &js, Timestamp time);
     void textSend(const TcpConnectionPtr &conn, json &js, Timestamp time);
+    void IMGSend(const TcpConnectionPtr &conn, json &js, Timestamp time);
+
 private:
     ChatService();
     ~ChatService();
     ChatService(const ChatService &) = delete;
     ChatService &operator=(const ChatService &) = delete;
-    
+
 private:
     // 存储消息id和其对应的业务处理方法
     std::unordered_map<int, MsgHandler> msgHandlerMap_;
