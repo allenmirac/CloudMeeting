@@ -7,6 +7,7 @@ MyVideoSurface::MyVideoSurface(QObject *parent) : QAbstractVideoSurface(parent)
 
 QList<QVideoFrame::PixelFormat> MyVideoSurface::supportedPixelFormats(QAbstractVideoBuffer::HandleType handleType) const
 {
+    // 视频缓冲区句柄格式
     if(handleType == QAbstractVideoBuffer::NoHandle){
         return QList<QVideoFrame::PixelFormat>() << QVideoFrame::Format_RGB32
                                                  << QVideoFrame::Format_ARGB32
@@ -41,6 +42,7 @@ bool MyVideoSurface::present(const QVideoFrame &frame)
         stop();
         return false;
     }
+    // 类似mmap(), 和munmap()
     if(frame.isMapped()) {
         emit frameAvailable(frame);
     } else {

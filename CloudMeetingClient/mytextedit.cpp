@@ -42,7 +42,7 @@ void MyTextEdit::setCompleter(const QStringList& stringList)
         m_completer->setWidget(this);
         m_completer->setCompletionMode(QCompleter::PopupCompletion);// 弹出菜单模式
         m_completer->setCaseSensitivity(Qt::CaseInsensitive);
-        connect(m_completer, SIGNAL(activated(QModelIndex)), this, SLOT(changeCompletion(QString)));
+        connect(m_completer, SIGNAL(activated(QString)), this, SLOT(changeCompletion(QString)));
     } else {
         QStringListModel* model = qobject_cast<QStringListModel*>(m_completer->model());
         if (model) {

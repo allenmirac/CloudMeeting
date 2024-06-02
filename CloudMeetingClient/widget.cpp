@@ -247,6 +247,16 @@ void Widget::on_createmeetBtn_clicked()
 {
     if(false == _createmeet)
     {
+        QString roomNo = ui->lineEdit_roomId->text();
+
+        QRegExp roomreg("^[1-9][0-9]{1,5}$");
+        QRegExpValidator  roomvalidate(roomreg);
+        int pos = 0;
+        if(roomvalidate.validate(roomNo, pos) != QValidator::Acceptable)
+        {
+            QMessageBox::warning(this, "RoomNo Error", "房间号不合法" , QMessageBox::Yes, QMessageBox::Yes);
+            return;
+        }
         LOG_DEBUG << "create meeting";
         ui->createmeetBtn->setDisabled(true);
         ui->openaudioBtn->setDisabled(true);
@@ -262,6 +272,7 @@ void Widget::on_createmeetBtn_clicked()
 void Widget::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
+    QWidget::update();
     /*
      * 触发事件(3条， 一般使用第二条进行触发)
      * 1. 窗口部件第一次显示时，系统会自动产生一个绘图事件。从而强制绘制这个窗口部件，主窗口起来会绘制一次
@@ -466,7 +477,7 @@ void Widget::datasolve(json* msg)
     }
     else if(msg_type == JOIN_MEETING_RESPONSE)
     {
-        int roomUserNo = data["roomUserNo"];
+        int roomUserNo = data.at("roomUserNo");
         if(roomUserNo == 0)
         {
             QMessageBox::information(this, "Meeting Error", tr("会议不存在") , QMessageBox::Yes, QMessageBox::Yes);
@@ -480,8 +491,8 @@ void Widget::datasolve(json* msg)
         }
         else if(roomUserNo == -1)
         {
-            QMessageBox::warning(this, "Meeting information", "成员已满，无法加入" , QMessageBox::Yes, QMessageBox::Yes);
-            ui->outlogLabel->setText(QString("成员已满，无法加入"));
+            QMessageBox::warning(this, "Meeting information", "房间号不存在" , QMessageBox::Yes, QMessageBox::Yes);
+            ui->outlogLabel->setText(QString("房间号不存在"));
             WRITE_LOG("full room, cannot join");
         }
         else if (roomUserNo > 0)
@@ -588,10 +599,10 @@ void Widget::datasolve(json* msg)
         uint32_t ip = data["ip"];
         removePartner(ip);
         LOG_DEBUG << ip << " eixt !!!!!!!!";
-        if(mainip == ip)
-        {
-            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
-        }
+//        if(mainip == ip)
+//        {
+//            ui->mainShowLabel->setPixmap(QPixmap::fromImage(QImage(":/img/2.jpg").scaled(ui->mainShowLabel->size())));
+//        }
         if(iplist.removeOne(QString("@") + QHostAddress(ip).toString()))
         {
             ui->plainTextEdit->setCompleter(iplist);
