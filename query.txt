@@ -1,0 +1,20 @@
+{"msgid":1, "id":1, "password":"123456"}
+{"msgid":5, "id":1, "from":"John", "to":3, "msg":"hello"}
+{"msgid":1, "id":3, "password":"123456"}
+{"msgid":1, "id":2, "password":"123456"}
+{"msgid":1, "id":3, "password":"123456"}
+
+{"msgid":7, "id":1, "groupname":"GG", "groupdesc":"GGbone!!!"}
+{"msgid":7, "id":1, "groupname":"GG1", "groupdesc":"GGhahhaha"}
+{"msgid":7, "id":1, "groupname":"GG2", "groupdesc":"GGaaaaa"}
+
+{"msgid":8, "userid":3, "groupid":7}
+
+
+{"msgid":9, "userid":1, "groupid":7, "groupmsg":"hhahah"}
+
+
+b chatservice.cpp:77
+b offlinemessage.cpp:51
+windows添加端口转发：
+netsh interface portproxy add v4tov4 listenport=2222 listenaddress=192.168.43.59 connectport=2222 connectaddress=192.168.188.128
